@@ -1698,6 +1698,87 @@ def mark_client_reply_read(reply_id):
     # For now, we'll just return success
     return jsonify({'success': True})
 
+@app.route('/api/unread-messages')
+@login_required()
+def get_unread_messages():
+    """Get count of unread messages for the current user"""
+    user_role = session['role']
+    user_id = session['user_id']
+    
+    if user_role == 'client':
+        # Count unread lead comments for this client
+        unread_count = LeadComment.query.filter_by(
+            client_id=user_id, 
+            is_read=False
+        ).filter(
+            LeadComment.status.in_(['approved', 'needs_revision', 'rejected', 'lead_reply'])
+        ).count()
+    elif user_role == 'lead':
+        # Count unread client replies for this lead
+        unread_count = LeadComment.query.filter_by(
+            lead_id=user_id,
+            status='client_reply'
+        ).filter(
+            LeadComment.is_read == False
+        ).count()
+    else:
+        unread_count = 0
+    
+    return jsonify({'unread_count': unread_count})
+
+@app.route('/api/chat-notifications')
+@login_required()
+def get_chat_notifications():
+    """Get recent chat notifications for the current user"""
+    user_role = session['role']
+    user_id = session['user_id']
+    
+    notifications = []
+    
+    if user_role == 'client':
+        # Get recent lead comments for this client
+        recent_comments = LeadComment.query.options(
+            db.joinedload(LeadComment.product),
+            db.joinedload(LeadComment.lead)
+        ).filter_by(
+            client_id=user_id
+        ).filter(
+            LeadComment.status.in_(['approved', 'needs_revision', 'rejected', 'lead_reply'])
+        ).order_by(LeadComment.created_at.desc()).limit(5).all()
+        
+        for comment in recent_comments:
+            notifications.append({
+                'id': comment.id,
+                'type': 'lead_comment',
+                'message': f"Review from {comment.lead.username}",
+                'product': comment.product.name,
+                'status': comment.status,
+                'timestamp': comment.created_at.isoformat(),
+                'is_read': comment.is_read
+            })
+    
+    elif user_role == 'lead':
+        # Get recent client replies for this lead
+        recent_replies = LeadComment.query.options(
+            db.joinedload(LeadComment.product),
+            db.joinedload(LeadComment.client)
+        ).filter_by(
+            lead_id=user_id,
+            status='client_reply'
+        ).order_by(LeadComment.created_at.desc()).limit(5).all()
+        
+        for reply in recent_replies:
+            notifications.append({
+                'id': reply.id,
+                'type': 'client_reply',
+                'message': f"Reply from {reply.client.username}",
+                'product': reply.product.name,
+                'timestamp': reply.created_at.isoformat(),
+                'is_read': getattr(reply, 'is_read', True)  # Default to read if field doesn't exist
+            })
+    
+    return jsonify({'notifications': notifications})
+
 @app.route('/change-password-first-login', methods=['GET', 'POST'])
 @login_required('lead')
 def change_password_first_login():

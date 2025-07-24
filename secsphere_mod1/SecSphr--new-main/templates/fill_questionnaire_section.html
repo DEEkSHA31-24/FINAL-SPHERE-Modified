@@ -16,6 +16,20 @@
     border-left: 6px solid #28a745 !important;
     box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15) !important;
 }
+
+/* Green color for selected options */
+.answer-option input[type="radio"]:checked + label {
+    background-color: rgba(40, 167, 69, 0.1);
+    border-left: 4px solid #28a745;
+    padding-left: 12px;
+    font-weight: 600;
+    color: #155724;
+}
+
+.question-card.option-selected {
+    border-left: 6px solid #28a745 !important;
+    background-color: rgba(40, 167, 69, 0.02) !important;
+}
 </style>
 {% endblock %}
 
@@ -457,6 +471,7 @@ document.querySelectorAll('input[type="radio"]').forEach(function(radio) {
     radio.addEventListener('change', function() {
         const questionCard = this.closest('.question-card');
         questionCard.classList.add('question-answered');
+        questionCard.classList.add('option-selected');
         questionCard.classList.remove('border-danger');
     });
 });
@@ -465,6 +480,7 @@ document.querySelectorAll('input[type="radio"]').forEach(function(radio) {
 document.querySelectorAll('input[type="radio"]:checked').forEach(function(radio) {
     const questionCard = radio.closest('.question-card');
     questionCard.classList.add('question-answered');
+    questionCard.classList.add('option-selected');
 });
 
 // File upload functionality
