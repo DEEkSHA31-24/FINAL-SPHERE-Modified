@@ -2796,6 +2796,71 @@ h6 { font-size: 0.825rem; font-weight: 600; }
     margin-top: 0.5rem;
 }
 
+/* Client Reply Cards */
+.client-reply-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-left: 4px solid #10b981;
+    border-radius: 8px;
+    padding: 1rem;
+    height: 100%;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.client-reply-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+    border-left-color: #059669;
+}
+
+.reply-header {
+    margin-bottom: 0.75rem;
+}
+
+.client-name {
+    font-size: 0.9rem;
+    color: #374151;
+}
+
+.reply-time {
+    font-size: 0.75rem;
+    color: #6b7280;
+    background: #f3f4f6;
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+}
+
+.product-info {
+    margin-top: 0.5rem;
+}
+
+.reply-preview {
+    margin: 0.75rem 0;
+    color: #4b5563;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.reply-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.75rem;
+}
+
+/* Modal styling enhancements */
+.original-review-display,
+.client-response-display {
+    max-height: 150px;
+    overflow-y: auto;
+    word-wrap: break-word;
+    line-height: 1.5;
+}
+
+.client-response-display {
+    border-left: 4px solid #10b981 !important;
+}
+
 .reply-form {
     margin-top: 1rem;
     background: white;

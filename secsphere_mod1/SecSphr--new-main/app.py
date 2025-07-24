@@ -1215,7 +1215,17 @@ def dashboard():
                 }
             clients_data[user.id]['products'][product.id]['responses'].append(resp)
 
-        return render_template('dashboard_lead.html', clients_data=clients_data)
+        # Get client replies for lead to see
+        client_replies = LeadComment.query.filter_by(
+            lead_id=session['user_id'], 
+            status='client_reply'
+        ).options(
+            db.joinedload(LeadComment.client),
+            db.joinedload(LeadComment.product),
+            db.joinedload(LeadComment.parent_comment)
+        ).order_by(LeadComment.created_at.desc()).all()
+
+        return render_template('dashboard_lead.html', clients_data=clients_data, client_replies=client_replies)
     elif role == 'superuser':
         products = Product.query.all()
 
@@ -1673,6 +1683,20 @@ def lead_reply_comment(comment_id):
         flash('Reply sent to client successfully.')
 
     return redirect(request.referrer or url_for('lead_comments'))
+
+@app.route('/lead/reply/<int:reply_id>/read', methods=['POST'])
+@login_required('lead')
+def mark_client_reply_read(reply_id):
+    """Mark a client reply as read by the lead"""
+    reply = LeadComment.query.get_or_404(reply_id)
+    
+    # Check if this lead has permission to mark this reply as read
+    if reply.lead_id != session['user_id'] or reply.status != 'client_reply':
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    # Mark as read (we can add an is_read field to the model later if needed)
+    # For now, we'll just return success
+    return jsonify({'success': True})
 
 @app.route('/change-password-first-login', methods=['GET', 'POST'])
 @login_required('lead')
