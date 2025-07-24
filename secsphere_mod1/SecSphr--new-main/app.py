@@ -1779,6 +1779,140 @@ def get_chat_notifications():
     
     return jsonify({'notifications': notifications})
 
+@app.route('/api/chat-thread/<int:comment_id>')
+@login_required()
+def get_chat_thread(comment_id):
+    """Get full conversation thread for a comment"""
+    user_role = session['role']
+    user_id = session['user_id']
+    
+    # Get the root comment
+    root_comment = LeadComment.query.get_or_404(comment_id)
+    
+    # Check permissions
+    if user_role == 'client' and root_comment.client_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    elif user_role == 'lead' and root_comment.lead_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    # Get all comments in this thread
+    thread_comments = LeadComment.query.options(
+        db.joinedload(LeadComment.lead),
+        db.joinedload(LeadComment.client),
+        db.joinedload(LeadComment.product)
+    ).filter(
+        db.or_(
+            LeadComment.id == comment_id,
+            LeadComment.parent_comment_id == comment_id
+        )
+    ).order_by(LeadComment.created_at.asc()).all()
+    
+    thread_data = []
+    for comment in thread_comments:
+        thread_data.append({
+            'id': comment.id,
+            'comment': comment.comment,
+            'status': comment.status,
+            'created_at': comment.created_at.isoformat(),
+            'is_read': comment.is_read,
+            'author': {
+                'id': comment.lead_id if comment.status != 'client_reply' else comment.client_id,
+                'username': comment.lead.username if comment.status != 'client_reply' else comment.client.username,
+                'role': 'lead' if comment.status != 'client_reply' else 'client'
+            }
+        })
+    
+    return jsonify({'thread': thread_data})
+
+@app.route('/api/mark-thread-read/<int:comment_id>', methods=['POST'])
+@login_required()
+def mark_thread_read(comment_id):
+    """Mark all messages in a thread as read"""
+    user_role = session['role']
+    user_id = session['user_id']
+    
+    # Get all comments in thread
+    if user_role == 'client':
+        comments_to_mark = LeadComment.query.filter(
+            db.or_(
+                LeadComment.id == comment_id,
+                LeadComment.parent_comment_id == comment_id
+            )
+        ).filter(
+            LeadComment.client_id == user_id,
+            LeadComment.is_read == False
+        ).all()
+    else:
+        comments_to_mark = LeadComment.query.filter(
+            db.or_(
+                LeadComment.id == comment_id,
+                LeadComment.parent_comment_id == comment_id
+            )
+        ).filter(
+            LeadComment.lead_id == user_id,
+            LeadComment.status == 'client_reply',
+            LeadComment.is_read == False
+        ).all()
+    
+    for comment in comments_to_mark:
+        comment.is_read = True
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'marked_count': len(comments_to_mark)})
+
+@app.route('/api/send-message', methods=['POST'])
+@login_required()
+def send_message():
+    """Send a new message in a conversation thread"""
+    user_role = session['role']
+    user_id = session['user_id']
+    
+    data = request.get_json()
+    parent_comment_id = data.get('parent_comment_id')
+    message_text = data.get('message', '').strip()
+    
+    if not message_text:
+        return jsonify({'error': 'Message cannot be empty'}), 400
+    
+    # Get parent comment to determine context
+    parent_comment = LeadComment.query.get_or_404(parent_comment_id)
+    
+    # Check permissions
+    if user_role == 'client' and parent_comment.client_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    elif user_role == 'lead' and parent_comment.lead_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    # Create new message
+    new_message = LeadComment(
+        response_id=parent_comment.response_id,
+        lead_id=parent_comment.lead_id if user_role == 'client' else user_id,
+        client_id=parent_comment.client_id if user_role == 'lead' else user_id,
+        product_id=parent_comment.product_id,
+        comment=message_text,
+        status='client_reply' if user_role == 'client' else 'lead_reply',
+        parent_comment_id=parent_comment_id,
+        is_read=False
+    )
+    
+    db.session.add(new_message)
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'message': {
+            'id': new_message.id,
+            'comment': new_message.comment,
+            'status': new_message.status,
+            'created_at': new_message.created_at.isoformat(),
+            'author': {
+                'username': session.get('username', 'Unknown'),
+                'role': user_role
+            }
+        }
+    })
+
 @app.route('/change-password-first-login', methods=['GET', 'POST'])
 @login_required('lead')
 def change_password_first_login():
