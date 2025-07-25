@@ -175,18 +175,10 @@
 <div class="row mb-4">
     <div class="col-12">
         <div class="card dashboard-card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header">
                 <h5 class="mb-0">
                     <i class="bi bi-bar-chart me-2"></i>Section Performance Overview
                 </h5>
-                <div>
-                    <button class="btn btn-outline-primary btn-sm me-2" onclick="showQuestionsModal()">
-                        <i class="bi bi-list-ul me-1"></i>Questions
-                    </button>
-                    <button class="btn btn-outline-secondary btn-sm" onclick="showReviewModal()">
-                        <i class="bi bi-pencil-square me-1"></i>Review
-                    </button>
-                </div>
             </div>
             <div class="card-body">
                 <div class="row">
@@ -195,10 +187,20 @@
                             {% if product_data.section_dimensions %}
                             <div class="col-md-6 col-lg-4 mb-3">
                                 <div class="performance-card">
-                                    <h6 class="fw-bold mb-2">
-                                        <i class="bi bi-person-circle me-1"></i>{{ client_data.user.username }}
-                                        <small class="text-muted">- {{ product_data.product.name }}</small>
-                                    </h6>
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <h6 class="fw-bold mb-0">
+                                            <i class="bi bi-person-circle me-1"></i>{{ client_data.user.username }}
+                                            <small class="text-muted">- {{ product_data.product.name }}</small>
+                                        </h6>
+                                        <div class="btn-group" role="group">
+                                            <button class="btn btn-outline-primary btn-sm" onclick="showProductQuestions({{ product_data.product.id }}, '{{ client_data.user.username }}', '{{ product_data.product.name }}')">
+                                                <i class="bi bi-list-ul"></i>
+                                            </button>
+                                            <button class="btn btn-outline-secondary btn-sm" onclick="showProductReview({{ product_data.product.id }}, '{{ client_data.user.username }}', '{{ product_data.product.name }}')">
+                                                <i class="bi bi-pencil-square"></i>
+                                            </button>
+                                        </div>
+                                    </div>
                                     {% for section, data in product_data.section_dimensions.items() %}
                                     <div class="dimension-item mb-2">
                                         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -996,6 +998,297 @@ if (!document.getElementById('statusCardStyles')) {
     style.id = 'statusCardStyles';
     style.textContent = statusCardCSS;
     document.head.appendChild(style);
+}
+
+// Product-specific Questions and Review functions
+function showProductQuestions(productId, clientName, productName) {
+    // Show questions modal for specific product
+    const questionsModalContent = `
+        <div class="modal fade" id="productQuestionsModal" tabindex="-1" aria-labelledby="productQuestionsModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="productQuestionsModalLabel">
+                            <i class="bi bi-list-ul me-2"></i>Questions - ${clientName} - ${productName}
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="productQuestionsContent">Loading questions...</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if present
+    const existingModal = document.getElementById('productQuestionsModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Add modal to body
+    document.body.insertAdjacentHTML('beforeend', questionsModalContent);
+    
+    // Load questions data for the specific product
+    loadProductQuestions(productId);
+    
+    // Show modal
+    new bootstrap.Modal(document.getElementById('productQuestionsModal')).show();
+}
+
+function loadProductQuestions(productId) {
+    // Fetch questions for specific product
+    fetch(`/api/product/${productId}/questions`)
+        .then(response => response.json())
+        .then(data => {
+            const content = document.getElementById('productQuestionsContent');
+            if (data.questions && data.questions.length > 0) {
+                let questionsHTML = '<div class="table-responsive"><table class="table table-striped">';
+                questionsHTML += '<thead><tr><th>Section</th><th>Question</th><th>Answer</th><th>Status</th></tr></thead><tbody>';
+                
+                data.questions.forEach(q => {
+                    const statusBadge = q.status === 'approved' ? '<span class="badge bg-success">Approved</span>' :
+                                       q.status === 'needs_revision' ? '<span class="badge bg-warning">Needs Revision</span>' :
+                                       q.status === 'rejected' ? '<span class="badge bg-danger">Rejected</span>' :
+                                       '<span class="badge bg-secondary">Pending</span>';
+                    
+                    questionsHTML += `<tr>
+                        <td>${q.section}</td>
+                        <td>${q.question}</td>
+                        <td>${q.answer}</td>
+                        <td>${statusBadge}</td>
+                    </tr>`;
+                });
+                
+                questionsHTML += '</tbody></table></div>';
+                content.innerHTML = questionsHTML;
+            } else {
+                content.innerHTML = '<p class="text-muted">No questions found for this product.</p>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading questions:', error);
+            document.getElementById('productQuestionsContent').innerHTML = '<p class="text-danger">Error loading questions.</p>';
+        });
+}
+
+function showProductReview(productId, clientName, productName) {
+    // Show review modal for specific product
+    const reviewModalContent = `
+        <div class="modal fade" id="productReviewModal" tabindex="-1" aria-labelledby="productReviewModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="productReviewModalLabel">
+                            <i class="bi bi-pencil-square me-2"></i>Review - ${clientName} - ${productName}
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="productReviewContent">Loading review data...</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if present
+    const existingModal = document.getElementById('productReviewModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Add modal to body
+    document.body.insertAdjacentHTML('beforeend', reviewModalContent);
+    
+    // Load review data for the specific product
+    loadProductReview(productId);
+    
+    // Show modal
+    new bootstrap.Modal(document.getElementById('productReviewModal')).show();
+}
+
+function loadProductReview(productId) {
+    // Fetch review data for specific product
+    fetch(`/api/product/${productId}/review`)
+        .then(response => response.json())
+        .then(data => {
+            const content = document.getElementById('productReviewContent');
+            if (data.responses && data.responses.length > 0) {
+                let reviewHTML = '<div class="table-responsive"><table class="table table-striped">';
+                reviewHTML += '<thead><tr><th>Section</th><th>Question</th><th>Answer</th><th>Status</th><th>Action</th></tr></thead><tbody>';
+                
+                data.responses.forEach(resp => {
+                    const statusBadge = resp.status === 'approved' ? '<span class="badge bg-success">Approved</span>' :
+                                       resp.status === 'needs_revision' ? '<span class="badge bg-warning">Needs Revision</span>' :
+                                       resp.status === 'rejected' ? '<span class="badge bg-danger">Rejected</span>' :
+                                       '<span class="badge bg-secondary">Pending</span>';
+                    
+                    reviewHTML += `<tr>
+                        <td>${resp.section}</td>
+                        <td>${resp.question}</td>
+                        <td>${resp.answer}</td>
+                        <td>${statusBadge}</td>
+                        <td>
+                            <button class="btn btn-outline-primary btn-sm" onclick="openIndividualReview(${resp.id}, '${resp.section}', '${resp.question}', '${resp.answer}', '${resp.client_comment || ''}', '${resp.evidence_path || ''}')">
+                                <i class="bi bi-pencil-square"></i> Review
+                            </button>
+                        </td>
+                    </tr>`;
+                });
+                
+                reviewHTML += '</tbody></table></div>';
+                content.innerHTML = reviewHTML;
+            } else {
+                content.innerHTML = '<p class="text-muted">No responses found for this product.</p>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading review data:', error);
+            document.getElementById('productReviewContent').innerHTML = '<p class="text-danger">Error loading review data.</p>';
+        });
+}
+
+// Individual review function with chat-like interface
+function openIndividualReview(responseId, section, question, answer, clientComment, evidencePath) {
+    const reviewModalContent = `
+        <div class="modal fade" id="individualReviewModal" tabindex="-1" aria-labelledby="individualReviewModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="individualReviewModalLabel">
+                            <i class="bi bi-chat-dots me-2"></i>Review Question
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card bg-light h-100">
+                                    <div class="card-header">
+                                        <h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>Question Details</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold">Section:</label>
+                                            <div><span class="badge bg-primary">${section}</span></div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold">Question:</label>
+                                            <div class="p-2 border rounded bg-white">${question}</div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold">Client Answer:</label>
+                                            <div class="d-flex align-items-center">
+                                                <span class="badge bg-success me-2">${answer}</span>
+                                                ${evidencePath ? `<a href="/${evidencePath}" target="_blank" class="btn btn-link btn-sm p-0"><i class="bi bi-paperclip text-primary"></i></a>` : ''}
+                                            </div>
+                                        </div>
+                                        ${clientComment ? `
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold">Client Comment:</label>
+                                            <div class="p-2 border rounded bg-white">${clientComment}</div>
+                                        </div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card bg-light h-100">
+                                    <div class="card-header">
+                                        <h6 class="mb-0"><i class="bi bi-chat-left-dots me-2"></i>Your Review</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <form id="individualReviewForm">
+                                            <div class="mb-3">
+                                                <label for="reviewComment" class="form-label fw-semibold">Review Comments:</label>
+                                                <textarea id="reviewComment" class="form-control" rows="4" placeholder="Add your review comments..."></textarea>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label fw-semibold">Review Status:</label>
+                                                <div class="d-flex gap-2 flex-wrap">
+                                                    <div class="status-card">
+                                                        <input type="radio" id="approved" name="review_status" value="approved" checked>
+                                                        <label for="approved" class="status-card-label">
+                                                            <i class="bi bi-check-circle text-success"></i>
+                                                            <span>Approved</span>
+                                                        </label>
+                                                    </div>
+                                                    <div class="status-card">
+                                                        <input type="radio" id="needs_revision" name="review_status" value="needs_revision">
+                                                        <label for="needs_revision" class="status-card-label">
+                                                            <i class="bi bi-exclamation-triangle text-warning"></i>
+                                                            <span>Needs Revision</span>
+                                                        </label>
+                                                    </div>
+                                                    <div class="status-card">
+                                                        <input type="radio" id="rejected" name="review_status" value="rejected">
+                                                        <label for="rejected" class="status-card-label">
+                                                            <i class="bi bi-x-circle text-danger"></i>
+                                                            <span>Rejected</span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <button type="button" class="btn btn-primary w-100" onclick="submitIndividualReview(${responseId})">
+                                                <i class="bi bi-send me-1"></i>Submit Review
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if present
+    const existingModal = document.getElementById('individualReviewModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Add modal to body
+    document.body.insertAdjacentHTML('beforeend', reviewModalContent);
+    
+    // Show modal
+    new bootstrap.Modal(document.getElementById('individualReviewModal')).show();
+}
+
+function submitIndividualReview(responseId) {
+    const comment = document.getElementById('reviewComment').value;
+    const status = document.querySelector('input[name="review_status"]:checked').value;
+    
+    const formData = new FormData();
+    formData.append('lead_comment', comment);
+    formData.append('review_status', status);
+    
+    fetch(`/review/${responseId}`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.ok) {
+            // Close modal and refresh the page
+            bootstrap.Modal.getInstance(document.getElementById('individualReviewModal')).hide();
+            location.reload();
+        } else {
+            alert('Error submitting review. Please try again.');
+        }
+    })
+    .catch(error => {
+        console.error('Error submitting review:', error);
+        alert('Error submitting review. Please try again.');
+    });
 }
 </script>
 </div>

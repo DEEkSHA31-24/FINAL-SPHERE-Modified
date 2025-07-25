@@ -404,6 +404,54 @@ document.addEventListener('DOMContentLoaded', function() {
             this.style.transform = 'translateY(0)';
         });
     });
+    
+    // Check for notifications from leads
+    checkForNotifications();
+    setInterval(checkForNotifications, 30000); // Check every 30 seconds
 });
+
+function checkForNotifications() {
+    fetch('/api/client/notifications')
+        .then(response => response.json())
+        .then(data => {
+            if (data.notifications && data.notifications.length > 0) {
+                showNotificationBanner(data.notifications);
+            }
+        })
+        .catch(error => console.log('Error checking notifications:', error));
+}
+
+function showNotificationBanner(notifications) {
+    // Remove existing notification banner
+    const existingBanner = document.getElementById('notificationBanner');
+    if (existingBanner) {
+        existingBanner.remove();
+    }
+    
+    // Create notification banner
+    const banner = document.createElement('div');
+    banner.id = 'notificationBanner';
+    banner.className = 'alert alert-warning alert-dismissible fade show position-fixed';
+    banner.style.cssText = 'top: 80px; right: 20px; z-index: 1050; max-width: 400px;';
+    banner.innerHTML = `
+        <div class="d-flex align-items-center">
+            <i class="bi bi-bell-fill me-2"></i>
+            <div>
+                <strong>New Feedback Received!</strong><br>
+                <small>You have ${notifications.length} question${notifications.length > 1 ? 's' : ''} requiring your attention.</small>
+            </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(banner);
+    
+    // Auto-dismiss after 10 seconds
+    setTimeout(() => {
+        if (banner && banner.parentNode) {
+            banner.remove();
+        }
+    }, 10000);
+}
 </script>
 {% endblock %}

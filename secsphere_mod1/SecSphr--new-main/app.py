@@ -1,6 +1,6 @@
 import os
 import csv
-from flask import Flask, render_template, redirect, url_for, request, flash, session, jsonify
+from flask import Flask, render_template, redirect, url_for, request, flash, session, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -2008,6 +2008,9 @@ def review_questionnaire(response_id):
             if status == 'rejected':
                 resp.is_reviewed = False  # Allow client to modify rejected responses
                 resp.needs_client_response = True  # Mark for client attention
+            elif status == 'needs_revision':
+                resp.is_reviewed = False  # Allow client to modify responses that need revision
+                resp.needs_client_response = True  # Mark for client attention
             else:
                 resp.is_reviewed = True
         except Exception:
@@ -2020,7 +2023,16 @@ def review_questionnaire(response_id):
         update_product_status(resp.product_id, resp.user_id)
         calculate_and_store_scores(resp.product_id, resp.user_id)
 
-        flash('Review comment sent to client.')
+        # Create notification for client if not approved
+        if status in ['needs_revision', 'rejected']:
+            flash(f'Review sent to client - Question marked as {status.replace("_", " ")}.')
+        else:
+            flash('Question approved successfully.')
+        
+        # If this is an AJAX request, return JSON response
+        if request.headers.get('Content-Type') == 'application/x-www-form-urlencoded':
+            return jsonify({'success': True, 'message': 'Review submitted successfully'})
+        
         return redirect(url_for('dashboard'))
     return render_template('review_questionnaire.html', response=resp)
 
@@ -2421,6 +2433,97 @@ def revoke_invitation(invitation_id):
     db.session.commit()
     flash('Invitation revoked successfully.')
     return redirect(url_for('manage_users'))
+
+# API endpoints for product-specific questions and review
+@app.route('/api/product/<int:product_id>/questions')
+@login_required('lead')
+def api_product_questions(product_id):
+    """Get questions for a specific product"""
+    try:
+        responses = QuestionnaireResponse.query.filter_by(product_id=product_id).all()
+        questions = []
+        
+        for resp in responses:
+            # Get lead comments for status
+            lead_comment = LeadComment.query.filter_by(response_id=resp.id).first()
+            status = lead_comment.status if lead_comment else 'pending'
+            
+            questions.append({
+                'id': resp.id,
+                'section': resp.section,
+                'question': resp.question,
+                'answer': resp.answer,
+                'status': status
+            })
+        
+        return jsonify({'questions': questions})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/product/<int:product_id>/review')
+@login_required('lead')
+def api_product_review(product_id):
+    """Get review data for a specific product"""
+    try:
+        responses = QuestionnaireResponse.query.filter_by(product_id=product_id).all()
+        review_data = []
+        
+        for resp in responses:
+            # Get lead comments for status
+            lead_comment = LeadComment.query.filter_by(response_id=resp.id).first()
+            status = lead_comment.status if lead_comment else 'pending'
+            
+            review_data.append({
+                'id': resp.id,
+                'section': resp.section,
+                'question': resp.question,
+                'answer': resp.answer,
+                'client_comment': resp.client_comment or '',
+                'evidence_path': resp.evidence_path or '',
+                'status': status
+            })
+        
+        return jsonify({'responses': review_data})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# File serving route
+@app.route('/static/uploads/<path:filename>')
+def serve_uploaded_file(filename):
+    """Serve uploaded files"""
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+# Notification API for client feedback
+@app.route('/api/client/notifications')
+@login_required('client')
+def api_client_notifications():
+    """Get notifications for client about feedback from leads"""
+    try:
+        user_id = session['user_id']
+        
+        # Get responses that need client action
+        responses_needing_action = QuestionnaireResponse.query.filter_by(
+            user_id=user_id,
+            needs_client_response=True
+        ).all()
+        
+        notifications = []
+        for resp in responses_needing_action:
+            lead_comment = LeadComment.query.filter_by(response_id=resp.id).first()
+            if lead_comment and lead_comment.status in ['needs_revision', 'rejected']:
+                notifications.append({
+                    'response_id': resp.id,
+                    'product_name': resp.product.name,
+                    'section': resp.section,
+                    'question': resp.question,
+                    'status': lead_comment.status,
+                    'comment': lead_comment.comment,
+                    'created_at': lead_comment.created_at.strftime('%Y-%m-%d %H:%M')
+                })
+        
+        return jsonify({'notifications': notifications})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     print("🚀 Starting SecureSphere Application")

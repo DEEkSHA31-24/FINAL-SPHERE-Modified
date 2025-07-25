@@ -47,12 +47,12 @@
                     <li class="list-group-item d-flex justify-content-between align-items-center
                         {% if idx == section_idx %}active{% elif done %}text-success{% else %}text-muted{% endif %}">
                         <span>
-                            <i class="bi bi-{% if done %}circle-fill{% elif idx == section_idx %}arrow-right-circle-fill{% else %}circle{% endif %} me-2"></i>
+                            <i class="bi bi-{% if done %}check-circle-fill text-success{% elif idx == section_idx %}arrow-right-circle-fill{% else %}circle{% endif %} me-2"></i>
                             <span class="d-none d-md-inline">{{ section }}</span>
                             <span class="d-md-none">{{ section[:15] }}{% if section|length > 15 %}...{% endif %}</span>
                         </span>
                         {% if done %}
-                            <i class="bi bi-circle-fill text-success"></i>
+                            <i class="bi bi-check-circle-fill text-success"></i>
                         {% elif idx == section_idx %}
                             <span class="badge bg-primary">Current</span>
                         {% endif %}
@@ -212,10 +212,12 @@
                                             {% if existing_response and existing_response.evidence_path %}
                                             <div class="mt-2">
                                                 <small class="text-muted">Current evidence:</small>
-                                                <div>
+                                                <div class="d-flex align-items-center">
+                                                    <i class="bi bi-check-circle-fill text-success me-2"></i>
                                                     <a href="/{{ existing_response.evidence_path }}" target="_blank" class="btn btn-outline-info btn-sm">
                                                         <i class="bi bi-eye me-1"></i>View Current Evidence
                                                     </a>
+                                                    <small class="text-muted ms-2">{{ existing_response.evidence_path.split('/')[-1] }}</small>
                                                 </div>
                                             </div>
                                             {% endif %}
@@ -488,7 +490,7 @@ document.querySelectorAll('.file-input').forEach(function(input) {
         const button = this.closest('.file-upload-container').querySelector('.file-upload-btn');
 
         if (fileName) {
-            fileNameDisplay.textContent = fileName;
+            fileNameDisplay.innerHTML = '<i class="bi bi-check-circle-fill text-success me-1"></i>' + fileName;
             button.innerHTML = '<i class="bi bi-paperclip me-2"></i>File Selected';
             button.classList.add('btn-success');
             button.classList.remove('btn-outline-secondary');
