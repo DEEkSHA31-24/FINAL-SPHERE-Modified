@@ -1,0 +1,19 @@
+nohup: ignoring input
+Successfully loaded questionnaire from static/devweb.csv using utf-8 encoding
+🚀 Starting SecureSphere Application
+Initializing database...
+✅ Database tables initialized
+🔧 Checking for naive datetime entries...
+✅ No naive datetime entries found
+✅ Application ready
+ * Serving Flask app 'app'
+ * Debug mode: on
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://172.30.0.2:5001
+[33mPress CTRL+C to quit[0m
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 270-611-955
+127.0.0.1 - - [25/Jul/2025 08:59:17] "HEAD / HTTP/1.1" 200 -

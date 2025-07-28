@@ -1,6 +1,6 @@
 import os
 import csv
-from flask import Flask, render_template, redirect, url_for, request, flash, session, jsonify
+from flask import Flask, render_template, redirect, url_for, request, flash, session, jsonify, send_from_directory, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -179,6 +179,22 @@ class LeadComment(db.Model):
 
     def __repr__(self):
         return f'<LeadComment {self.id}: {self.status}>'
+
+class ClientReply(db.Model):
+    __tablename__ = 'client_replies'
+
+    id = db.Column(db.Integer, primary_key=True)
+    lead_comment_id = db.Column(db.Integer, db.ForeignKey('lead_comments.id'), nullable=False)
+    client_reply = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(20), default='pending')  # pending, responded, reviewed
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    lead_comment = db.relationship('LeadComment', backref='client_replies')
+
+    def __repr__(self):
+        return f'<ClientReply {self.id}: {self.status}>'
 
 class ScoreHistory(db.Model):
     __tablename__ = 'score_history'
@@ -2301,6 +2317,173 @@ def api_all_scores():
         all_scores.append(product_data)
 
     return jsonify(all_scores)
+
+# New API endpoints for product-specific questions and reviews
+@app.route('/api/product/<int:product_id>/questions')
+@login_required('lead')
+def api_product_questions(product_id):
+    """Get all questions and responses for a specific product"""
+    try:
+        product = Product.query.get_or_404(product_id)
+        responses = QuestionnaireResponse.query.filter_by(product_id=product_id).all()
+        
+        questions_data = []
+        for response in responses:
+            # Get the latest lead comment status
+            lead_comment = LeadComment.query.filter_by(response_id=response.id).order_by(LeadComment.created_at.desc()).first()
+            status = lead_comment.status if lead_comment else 'pending'
+            
+            questions_data.append({
+                'id': response.id,
+                'section': response.section,
+                'question': response.question,
+                'answer': response.answer,
+                'client_comment': response.client_comment,
+                'evidence_path': response.evidence_path,
+                'status': status
+            })
+        
+        return jsonify(questions_data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/product/<int:product_id>/responses')
+@login_required('lead')
+def api_product_responses(product_id):
+    """Get all responses for a specific product for review"""
+    try:
+        product = Product.query.get_or_404(product_id)
+        responses = QuestionnaireResponse.query.filter_by(product_id=product_id).all()
+        
+        responses_data = []
+        for response in responses:
+            # Get the latest lead comment status
+            lead_comment = LeadComment.query.filter_by(response_id=response.id).order_by(LeadComment.created_at.desc()).first()
+            status = lead_comment.status if lead_comment else 'pending'
+            
+            responses_data.append({
+                'id': response.id,
+                'section': response.section,
+                'question': response.question,
+                'answer': response.answer,
+                'client_comment': response.client_comment,
+                'evidence_path': response.evidence_path,
+                'status': status
+            })
+        
+        return jsonify(responses_data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/submit-review', methods=['POST'])
+@login_required('lead')
+def api_submit_review():
+    """Submit review for a specific response"""
+    try:
+        response_id = request.form.get('response_id')
+        lead_comment_text = request.form.get('lead_comment', '').strip()
+        review_status = request.form.get('review_status', 'approved')
+        
+        if not response_id:
+            return jsonify({'success': False, 'message': 'Response ID is required'}), 400
+            
+        response = QuestionnaireResponse.query.get_or_404(response_id)
+        
+        # Create or update lead comment
+        lead_comment = LeadComment(
+            response_id=response_id,
+            lead_id=session['user_id'],
+            comment=lead_comment_text,
+            status=review_status,
+            created_at=datetime.now(timezone.utc)
+        )
+        
+        db.session.add(lead_comment)
+        db.session.commit()
+        
+        # If status is needs_revision or rejected, create a client reply request
+        if review_status in ['needs_revision', 'rejected']:
+            client_reply = ClientReply(
+                lead_comment_id=lead_comment.id,
+                status='pending',
+                created_at=datetime.now(timezone.utc)
+            )
+            db.session.add(client_reply)
+            db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Review submitted successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/client-reply', methods=['POST'])
+@login_required('client')
+def api_client_reply():
+    """Handle client replies to reviewer comments"""
+    try:
+        response_id = request.form.get('response_id')
+        client_reply_text = request.form.get('client_reply', '').strip()
+        
+        if not response_id or not client_reply_text:
+            return jsonify({'success': False, 'message': 'Response ID and reply text are required'}), 400
+            
+        response = QuestionnaireResponse.query.get_or_404(response_id)
+        
+        # Check if user owns this response
+        if response.user_id != session['user_id']:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+        
+        # Handle file upload if provided
+        evidence_path = None
+        if 'additional_evidence' in request.files:
+            file = request.files['additional_evidence']
+            if file and file.filename:
+                filename = secure_filename(file.filename)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"{timestamp}_{filename}"
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(file_path)
+                evidence_path = f"static/uploads/{filename}"
+        
+        # Update the response with the client's reply
+        response.client_comment = client_reply_text
+        if evidence_path:
+            response.evidence_path = evidence_path
+        response.needs_client_response = False
+        response.updated_at = datetime.now(timezone.utc)
+        
+        # Create a client reply record (this will notify the lead)
+        # Find the latest lead comment for this response
+        latest_lead_comment = LeadComment.query.filter_by(response_id=response_id).order_by(LeadComment.created_at.desc()).first()
+        
+        if latest_lead_comment:
+            client_reply = ClientReply(
+                lead_comment_id=latest_lead_comment.id,
+                client_reply=client_reply_text,
+                status='responded',
+                created_at=datetime.now(timezone.utc)
+            )
+            db.session.add(client_reply)
+        
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Reply sent successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# File serving route for evidence files
+@app.route('/static/uploads/<path:filename>')
+@login_required()
+def serve_uploaded_file(filename):
+    """Serve uploaded evidence files"""
+    try:
+        uploads_dir = app.config['UPLOAD_FOLDER']
+        return send_from_directory(uploads_dir, filename)
+    except FileNotFoundError:
+        abort(404)
 
 @app.route('/admin/invite_user', methods=['GET', 'POST'])
 @login_required('superuser')

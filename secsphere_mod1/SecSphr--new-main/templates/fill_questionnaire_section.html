@@ -47,12 +47,12 @@
                     <li class="list-group-item d-flex justify-content-between align-items-center
                         {% if idx == section_idx %}active{% elif done %}text-success{% else %}text-muted{% endif %}">
                         <span>
-                            <i class="bi bi-{% if done %}circle-fill{% elif idx == section_idx %}arrow-right-circle-fill{% else %}circle{% endif %} me-2"></i>
+                            <i class="bi bi-{% if done %}check-circle-fill{% elif idx == section_idx %}arrow-right-circle-fill{% else %}circle{% endif %} me-2"></i>
                             <span class="d-none d-md-inline">{{ section }}</span>
                             <span class="d-md-none">{{ section[:15] }}{% if section|length > 15 %}...{% endif %}</span>
                         </span>
                         {% if done %}
-                            <i class="bi bi-circle-fill text-success"></i>
+                            <i class="bi bi-check-circle-fill text-success"></i>
                         {% elif idx == section_idx %}
                             <span class="badge bg-primary">Current</span>
                         {% endif %}
@@ -107,15 +107,26 @@
                                     <div class="d-flex align-items-center">
                                         <i class="bi bi-{% if review_status == 'approved' %}check-circle{% elif review_status == 'needs_revision' %}exclamation-triangle{% elif review_status == 'rejected' %}x-circle{% endif %} me-2"></i>
                                         <strong>
-                                            {% if review_status == 'approved' %}Approved by Reviewer
-                                            {% elif review_status == 'needs_revision' %}Needs Revision
-                                            {% elif review_status == 'rejected' %}Rejected - Requires Re-submission
+                                            {% if review_status == 'approved' %}✅ Approved by Reviewer
+                                            {% elif review_status == 'needs_revision' %}⚠️ Needs Revision
+                                            {% elif review_status == 'rejected' %}❌ Rejected - Requires Re-submission
                                             {% endif %}
                                         </strong>
                                     </div>
                                     {% if lead_comment and lead_comment.comment %}
                                     <div class="mt-2">
                                         <small><strong>Reviewer Comment:</strong> {{ lead_comment.comment }}</small>
+                                    </div>
+                                    {% endif %}
+                                    {% if review_status == 'needs_revision' %}
+                                    <div class="mt-2">
+                                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="openChatInterface({{ outer_loop_index }}, '{{ lead_comment.comment if lead_comment else '' }}', '{{ existing_response.id if existing_response else '' }}')">
+                                            <i class="bi bi-chat-dots me-1"></i>Respond to Reviewer
+                                        </button>
+                                    </div>
+                                    {% elif review_status == 'rejected' %}
+                                    <div class="mt-2">
+                                        <small class="text-danger"><strong>This question has been rejected. Please re-answer the question above with the correct information.</strong></small>
                                     </div>
                                     {% endif %}
                                 </div>
@@ -147,7 +158,7 @@
                                                            data-product-id="{{ product.id }}"
                                                            {% if existing_answers and outer_loop_index in existing_answers and existing_answers[outer_loop_index].answer == option %}checked{% endif %}
                                                            {% set question_status = question_review_status.get(outer_loop_index) %}
-                                                           {% if question_status == 'approved' or question_status == 'under_review' or question_status == 'pending' %}disabled{% endif %}
+                                                           {% if review_status == 'approved' %}disabled{% endif %}
                                                            required>
                                                     <label class="form-check-label ms-2 flex-grow-1" for="answer_{{ outer_loop_index }}_{{ loop.index0 }}" data-option-letter="{{ 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[loop.index0] }}">
                                                         {{ option }}
@@ -489,7 +500,7 @@ document.querySelectorAll('.file-input').forEach(function(input) {
 
         if (fileName) {
             fileNameDisplay.textContent = fileName;
-            button.innerHTML = '<i class="bi bi-paperclip me-2"></i>File Selected';
+            button.innerHTML = '<i class="bi bi-check-circle-fill me-2"></i><i class="bi bi-paperclip me-2"></i>File Selected';
             button.classList.add('btn-success');
             button.classList.remove('btn-outline-secondary');
         } else {
@@ -500,5 +511,141 @@ document.querySelectorAll('.file-input').forEach(function(input) {
         }
     });
 });
+
+// Chat interface for reviewer comments
+function openChatInterface(questionIndex, reviewerComment, responseId) {
+    const chatModalContent = `
+        <div class="modal fade" id="chatModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header bg-gradient-primary text-white">
+                        <h5 class="modal-title">
+                            <i class="bi bi-chat-dots me-2"></i>Chat with Reviewer - Question ${questionIndex + 1}
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="chat-container" style="height: 400px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px; background: #f8f9fa;">
+                            <div class="chat-message reviewer-message mb-3">
+                                <div class="d-flex align-items-start">
+                                    <div class="avatar-circle bg-primary text-white me-3">
+                                        <i class="bi bi-person"></i>
+                                    </div>
+                                    <div class="message-content">
+                                        <div class="message-header">
+                                            <strong>Reviewer</strong>
+                                            <small class="text-muted ms-2">${new Date().toLocaleString()}</small>
+                                        </div>
+                                        <div class="message-text bg-primary text-white p-2 rounded mt-1">
+                                            ${reviewerComment || 'This question needs revision. Please provide additional information.'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="chatMessages"></div>
+                        </div>
+                        <form id="chatReplyForm" class="mt-3">
+                            <input type="hidden" name="response_id" value="${responseId}">
+                            <div class="input-group">
+                                <textarea class="form-control" name="client_reply" rows="3" 
+                                          placeholder="Type your response here..." required></textarea>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-send me-1"></i>Send
+                                </button>
+                            </div>
+                            <div class="mt-2">
+                                <small class="text-muted">You can also upload additional evidence if needed.</small>
+                            </div>
+                            <div class="mt-2">
+                                <input type="file" name="additional_evidence" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.txt,.csv,.xlsx">
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if present
+    const existingModal = document.getElementById('chatModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Add modal to body
+    document.body.insertAdjacentHTML('beforeend', chatModalContent);
+    
+    // Handle form submission
+    document.getElementById('chatReplyForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        
+        fetch('/api/client-reply', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('chatModal')).hide();
+                // Show success message and refresh
+                alert('Your response has been sent to the reviewer!');
+                location.reload();
+            } else {
+                alert('Error sending response: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error sending response. Please try again.');
+        });
+    });
+    
+    // Show modal
+    new bootstrap.Modal(document.getElementById('chatModal')).show();
+}
+
+// Add CSS for chat interface
+const chatCSS = `
+.avatar-circle {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+}
+
+.chat-message {
+    margin-bottom: 15px;
+}
+
+.message-content {
+    flex: 1;
+}
+
+.message-text {
+    max-width: 80%;
+    word-wrap: break-word;
+}
+
+.reviewer-message .message-text {
+    background-color: #2563eb !important;
+}
+
+.client-message .message-text {
+    background-color: #16a34a !important;
+}
+`;
+
+// Inject CSS into the page
+if (!document.getElementById('chatStyles')) {
+    const style = document.createElement('style');
+    style.id = 'chatStyles';
+    style.textContent = chatCSS;
+    document.head.appendChild(style);
+}
 </script>
 {% endblock %}
